@@ -1221,6 +1221,19 @@ async function generarPDF(){
   limpiarBorradorSiAplica();
   toast(`📄 ${filename} guardado`);
 
+  // El PDF final ya se generó: ahora sí se marcan como cotizados los folios de
+  // técnico que se cargaron a este carrito, para que desaparezcan de "Reportes Pendientes"
+  if(foliosCargadosPendientesDeCotizar.length&&sheetsConf.url){
+    foliosCargadosPendientesDeCotizar.forEach(folio=>{
+      fetch(sheetsConf.url,{
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({accion:'marcarFolioCotizado',folio})
+      }).catch(e=>console.warn('No se pudo marcar el folio como cotizado:',e));
+    });
+    foliosCargadosPendientesDeCotizar=[];
+  }
+
   // Mandar también una copia a Google Drive (si ya está configurado)
   if(sheetsConf.url){
     const base64pdf=doc.output('datauristring').split(',')[1];
@@ -1695,14 +1708,12 @@ async function cargarPorFolio(){
 
     renderCart();
 
-    // Ya se cargó al menos una pieza de este folio: lo quitamos de "pendientes"
-    // (en el Sheet y del menú) para que no se vuelva a cargar por accidente.
+    // Ya se cargó al menos una pieza de este folio: lo quitamos del menú para que
+    // no se vuelva a cargar por accidente en esta sesión, pero NO se borra todavía
+    // de "Reportes Pendientes" — eso pasa hasta que de verdad se genere el PDF final
+    // (ver generarPDF), para no perder el folio si la cotización queda a medias.
     if(agregadas>0){
-      fetch(sheetsConf.url,{
-        method:'POST',
-        headers:{'Content-Type':'text/plain;charset=utf-8'},
-        body:JSON.stringify({accion:'marcarFolioCotizado',folio})
-      }).catch(e=>console.warn('No se pudo marcar el folio como cotizado:',e));
+      if(!foliosCargadosPendientesDeCotizar.includes(folio)) foliosCargadosPendientesDeCotizar.push(folio);
       const opcion=[...sel.options].find(o=>o.value===folio);
       if(opcion) opcion.remove();
       sel.value='';
@@ -1961,6 +1972,7 @@ function toast(msg){
 document.getElementById('cedis-fecha').textContent=`📅 Existencia CEDIS actualizada al ${CEDIS_FECHA}`;
 reiniciarFolioPendiente();
 let directorioClientesListo=cargarDirectorioClientes(); // se referencia en cargarPorFolio()
+let foliosCargadosPendientesDeCotizar=[]; // folios de técnico cargados a este carrito, aún no marcados como cotizados
 cargarFoliosPendientes();
 cargarTarifasServicio();
 cargarOtrosProductos();
