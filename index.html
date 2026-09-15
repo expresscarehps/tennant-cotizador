@@ -288,6 +288,17 @@ tr:hover td{background:#F8FAFF}
     <span id="cart-count">0 partidas</span>
   </div>
 
+  <div style="background:#EFF8FA;border:1px solid #BEE3E8;border-radius:8px;padding:10px;margin-bottom:10px;">
+    <label style="font-size:11px;font-weight:700;color:#0B2E4A;display:block;margin-bottom:6px;">📲 Cargar piezas de un reporte de técnico</label>
+    <div style="display:flex;gap:6px;">
+      <select id="folio-reporte-inp" style="flex:1;padding:7px 8px;border:1px solid #ccc;border-radius:5px;font-size:12px;">
+        <option value="">Selecciona un folio pendiente…</option>
+      </select>
+      <button onclick="cargarPorFolio()" style="background:var(--blue,#0092A6);color:#fff;border:none;border-radius:5px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Cargar</button>
+    </div>
+    <div id="folio-reporte-status" style="font-size:11px;margin-top:6px;"></div>
+  </div>
+
   <div class="moneda-bar">
     <div class="mon-row">
       <button class="btn-mon active" id="btn-usd" onclick="setMoneda('USD')">🇺🇸 USD</button>
@@ -295,7 +306,7 @@ tr:hover td{background:#F8FAFF}
     </div>
     <div class="tc-row" id="tc-row" style="display:none">
       <label>Tipo de cambio:</label>
-      <input class="tc-inp" type="number" id="tc" value="17.50" step="0.01" min="1" oninput="renderCart()">
+      <input class="tc-inp" type="number" id="tc" value="20" step="0.01" min="1" oninput="renderCart()">
     </div>
   </div>
 
@@ -628,7 +639,7 @@ function renderResultados(res){
   }
   const isTnn=marcaActiva==='Tennant';
   const isOtros=marcaActiva==='Otros';
-  const tc=parseFloat(document.getElementById('tc')?.value)||17.5;
+  const tc=parseFloat(document.getElementById('tc')?.value)||20;
 
   let html=`<div style="overflow-x:auto"><table><thead><tr>
     <th>Código</th>${isTnn?'<th>ECC</th>':''}<th>Descripción</th>
@@ -754,7 +765,7 @@ function limpiarCot(){
 
 // ═══ RENDER CARRITO ═══
 function renderCart(){
-  const tc=parseFloat(document.getElementById('tc')?.value)||17.5;
+  const tc=parseFloat(document.getElementById('tc')?.value)||20;
   const fmtUSD=v=>`$${v.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} USD`;
   const fmtMXN=v=>`$${v.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN`;
   const fmt=v=>moneda==='MXN'?fmtMXN(v):fmtUSD(v);
@@ -922,7 +933,7 @@ async function generarPDF(){
   registrarProspectoSiEsNuevo(document.getElementById('cli-nombre').value);
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'letter'});
-  const tc=parseFloat(document.getElementById('tc')?.value)||17.5;
+  const tc=parseFloat(document.getElementById('tc')?.value)||20;
   const sym=moneda==='USD'?'USD':'MXN';
   const fmtUSD=v=>`$${v.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} USD`;
   const fmtMXN=v=>`$${v.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN`;
@@ -1239,7 +1250,7 @@ async function enviarPDFDrive(base64pdf,filename){
 // ═══ WHATSAPP ═══
 // Construye el texto del mensaje (compartido entre "Enviar" y "Copiar mensaje")
 function construirMensajeWA(){
-  const tc=parseFloat(document.getElementById('tc')?.value)||17.5;
+  const tc=parseFloat(document.getElementById('tc')?.value)||20;
   const sym=moneda==='USD'?'USD':'MXN';
   const fmtU=v=>`$${v.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} USD`;
   const fmtM=v=>`$${v.toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2})} MXN`;
@@ -1390,7 +1401,7 @@ function guardarBorrador(){
     folio:folioActual,
     carrito:JSON.parse(JSON.stringify(carrito)),
     moneda,
-    tc:document.getElementById('tc')?.value||'17.5',
+    tc:document.getElementById('tc')?.value||'20',
     campos:camposClienteActuales()
   };
   const idx=borradores.findIndex(b=>b.id===datos.id);
@@ -1430,7 +1441,7 @@ function cargarBorrador(id){
   folioActual=b.folio||null;
   document.getElementById('folio-hdr').textContent=folioActual||'Pendiente';
   setMoneda(b.moneda||'USD');
-  if(document.getElementById('tc')) document.getElementById('tc').value=b.tc||'17.5';
+  if(document.getElementById('tc')) document.getElementById('tc').value=b.tc||'20';
   const c=b.campos||{};
   document.getElementById('cli-nombre').value=c.nombre||'';
   document.getElementById('cli-numcliente').value=c.numCliente||'';
@@ -1573,6 +1584,142 @@ async function cargarDirectorioClientes(){
       }
     }
   }catch(e){console.warn('Directorio de clientes (Bind ERP) no disponible:',e);}
+}
+
+// ═══ FOLIOS PENDIENTES (reportes de técnico listos para cotizar) ═══
+async function cargarFoliosPendientes(){
+  const sel=document.getElementById('folio-reporte-inp');
+  if(!sel||!sheetsConf.url) return;
+  try{
+    const r=await fetch(sheetsConf.url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({accion:'listaFoliosPendientes'})
+    });
+    const data=await r.json();
+    if(data.resultado!=='ok') return;
+    const valorActual=sel.value;
+    sel.innerHTML='<option value="">Selecciona un folio pendiente…</option>'+
+      (data.folios||[]).map(f=>`<option value="${f.folio.replace(/"/g,'&quot;')}">${f.folio} — ${(f.cliente||'sin cliente').replace(/</g,'&lt;')}</option>`).join('');
+    if(valorActual&&[...sel.options].some(o=>o.value===valorActual)) sel.value=valorActual;
+  }catch(e){console.warn('Folios pendientes no disponibles:',e);}
+}
+
+// ═══ CARGAR PIEZAS DESDE UN REPORTE DE TÉCNICO (Firebase) ═══
+async function cargarPorFolio(){
+  const sel=document.getElementById('folio-reporte-inp');
+  const folio=sel.value.trim();
+  const statusEl=document.getElementById('folio-reporte-status');
+  if(!folio){ statusEl.textContent='Selecciona un folio.'; statusEl.style.color='#D64545'; return; }
+  if(!sheetsConf.url){ statusEl.textContent='Falta configurar la conexión con Apps Script.'; statusEl.style.color='#D64545'; return; }
+
+  statusEl.textContent='Buscando…';
+  statusEl.style.color='#5B6B75';
+  try{
+    const r=await fetch(sheetsConf.url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body:JSON.stringify({accion:'cargarPiezasPorFolio',folio})
+    });
+    const data=await r.json();
+
+    if(data.resultado==='error'){
+      statusEl.textContent=data.mensaje||'Ocurrió un error.';
+      statusEl.style.color='#D64545';
+      return;
+    }
+    if(data.resultado==='no_encontrado'||!data.piezas||!data.piezas.length){
+      statusEl.textContent=`No se encontró el folio "${folio}".`;
+      statusEl.style.color='#D64545';
+      return;
+    }
+
+    // Autocompleta datos del cliente si el campo está vacío
+    if(data.infoReporte){
+      const nombreCliente=document.getElementById('cli-nombre');
+      if(nombreCliente&&!nombreCliente.value.trim()){
+        nombreCliente.value=data.infoReporte.cliente||'';
+        await directorioClientesListo; // espera a que el directorio de Bind ERP ya esté cargado antes de buscar coincidencia
+        autocompletarDireccion();
+      }
+      const campoEquipo=document.getElementById('cli-equipo');
+      if(campoEquipo&&!campoEquipo.value.trim()&&data.infoReporte.equipo){
+        campoEquipo.value=data.infoReporte.equipo;
+      }
+      const campoSerie=document.getElementById('cli-serie');
+      if(campoSerie&&!campoSerie.value.trim()&&data.infoReporte.noSerie){
+        campoSerie.value=data.infoReporte.noSerie;
+      }
+    }
+
+    // Deja rastro del folio del reporte de técnico en "Motivo", para poder rastrear
+    // qué cotización viene de qué reporte
+    const campoMotivo=document.getElementById('cli-motivo');
+    if(campoMotivo){
+      const refFolio=`Derivada del reporte de servicio folio: ${folio}`;
+      campoMotivo.value=campoMotivo.value.trim()?`${campoMotivo.value.trim()} — ${refFolio}`:refFolio;
+    }
+
+    let agregadas=0;
+    const noEncontradas=[];
+
+    data.piezas.forEach(p=>{
+      const codigo=(p.codigoVenta||p.codigoEcc||'').trim();
+      if(!codigo) return;
+      const cantidad=parseInt(p.cantidad)||1;
+
+      if(p.marca==='IPC'){
+        const info=IPC_PARTS?IPC_PARTS[codigo]:null;
+        if(!info){ noEncontradas.push(p.descripcion||codigo); return; }
+        const existe=carrito.find(x=>x.id===codigo&&x.tipo==='ipc');
+        if(existe){existe.qty+=cantidad;}
+        else{carrito.push({tipo:'ipc',id:codigo,ecc:'',desc:info.d,precio_lista:info.p,qty:cantidad,disc:0,entrega:'',moneda:'MXN'});}
+        agregadas++;
+      }else if(p.marca==='Otro'){
+        const existeProd=otrosProductos.find(x=>x.codigo===codigo);
+        const desc=existeProd?existeProd.descripcion:(p.descripcion||codigo);
+        const precio=existeProd?existeProd.precio:0;
+        const existe=carrito.find(x=>x.id===codigo&&x.tipo==='otro');
+        if(existe){existe.qty+=cantidad;}
+        else{carrito.push({tipo:'otro',id:codigo,ecc:'',desc,precio_lista:precio,qty:cantidad,disc:0,entrega:'',moneda:'MXN'});}
+        agregadas++;
+      }else{ // Tennant (default)
+        const info=PARTS?PARTS[codigo]:null;
+        if(!info){ noEncontradas.push(p.descripcion||codigo); return; }
+        const existe=carrito.find(x=>x.id===codigo&&x.tipo==='tnn');
+        if(existe){existe.qty+=cantidad;}
+        else{carrito.push({tipo:'tnn',id:codigo,ecc:p.codigoEcc||'',desc:info.d,precio_lista:info.p,qty:cantidad,disc:0,entrega:'',moneda:'USD'});}
+        agregadas++;
+      }
+    });
+
+    renderCart();
+
+    // Ya se cargó al menos una pieza de este folio: lo quitamos de "pendientes"
+    // (en el Sheet y del menú) para que no se vuelva a cargar por accidente.
+    if(agregadas>0){
+      fetch(sheetsConf.url,{
+        method:'POST',
+        headers:{'Content-Type':'text/plain;charset=utf-8'},
+        body:JSON.stringify({accion:'marcarFolioCotizado',folio})
+      }).catch(e=>console.warn('No se pudo marcar el folio como cotizado:',e));
+      const opcion=[...sel.options].find(o=>o.value===folio);
+      if(opcion) opcion.remove();
+      sel.value='';
+    }
+
+    if(noEncontradas.length){
+      statusEl.innerHTML=`✓ ${agregadas} pieza(s) agregada(s). ⚠ ${noEncontradas.length} no se encontraron en el catálogo: ${noEncontradas.join(', ')} — revísalas manualmente.`;
+      statusEl.style.color='#E8A33D';
+    }else{
+      statusEl.textContent=`✓ ${agregadas} pieza(s) agregada(s) al carrito desde el folio ${folio}.`;
+      statusEl.style.color='#2E9E5B';
+    }
+  }catch(e){
+    console.error(e);
+    statusEl.textContent='No se pudo conectar. Intenta de nuevo.';
+    statusEl.style.color='#D64545';
+  }
 }
 
 // Al escribir/elegir un nombre que coincide con un cliente conocido, trae su dirección de Bind ERP
@@ -1813,7 +1960,8 @@ function toast(msg){
 // ═══ INIT ═══
 document.getElementById('cedis-fecha').textContent=`📅 Existencia CEDIS actualizada al ${CEDIS_FECHA}`;
 reiniciarFolioPendiente();
-cargarDirectorioClientes();
+let directorioClientesListo=cargarDirectorioClientes(); // se referencia en cargarPorFolio()
+cargarFoliosPendientes();
 cargarTarifasServicio();
 cargarOtrosProductos();
 document.getElementById('cli-asesor').value=localStorage.getItem('tnn_asesor')||'';
