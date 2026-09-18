@@ -752,7 +752,7 @@ function feedbackBtn(sel){
 
 function limpiarCot(){
   if(carrito.length&&!confirm('¿Nueva cotización? Se perderán los datos actuales.'))return;
-  carrito=[];reiniciarFolioPendiente();borradorActualId=null;
+  carrito=[];reiniciarFolioPendiente();borradorActualId=null;foliosCargadosPendientesDeCotizar=[];
   ['cli-nombre','cli-numcliente','cli-poblacion','cli-direccion','cli-contacto','cli-puesto','cli-correo','cli-telefono','cli-condpago','cli-equipo','cli-serie','cli-motivo','cli-observaciones'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.value='';
   });
@@ -1415,7 +1415,8 @@ function guardarBorrador(){
     carrito:JSON.parse(JSON.stringify(carrito)),
     moneda,
     tc:document.getElementById('tc')?.value||'20',
-    campos:camposClienteActuales()
+    campos:camposClienteActuales(),
+    foliosPendientes:[...foliosCargadosPendientesDeCotizar]
   };
   const idx=borradores.findIndex(b=>b.id===datos.id);
   if(idx>=0) borradores[idx]=datos; else borradores.push(datos);
@@ -1451,6 +1452,7 @@ function cargarBorrador(id){
   if(!b) return;
   if(carrito.length&&!confirm('Vas a reemplazar la cotización actual con este borrador. ¿Continuar?')) return;
   carrito=JSON.parse(JSON.stringify(b.carrito));
+  foliosCargadosPendientesDeCotizar=[...(b.foliosPendientes||[])];
   folioActual=b.folio||null;
   document.getElementById('folio-hdr').textContent=folioActual||'Pendiente';
   setMoneda(b.moneda||'USD');
