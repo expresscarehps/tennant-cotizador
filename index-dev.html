@@ -297,6 +297,16 @@ tr:hover td{background:#F8FAFF}
       <button onclick="cargarPorFolio()" style="background:var(--blue,#0092A6);color:#fff;border:none;border-radius:5px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Cargar</button>
     </div>
     <div id="folio-reporte-status" style="font-size:11px;margin-top:6px;"></div>
+    <div id="folio-reporte-mo" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid #E8A33D;border-radius:6px;background:#FFF8EC;font-size:12px;color:#1F2A44;">
+      <div id="mo-info" style="font-weight:600;margin-bottom:6px;"></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <label for="mo-precio" style="font-size:11px;">Precio por hora:</label>
+        <input type="number" id="mo-precio" min="0" step="0.01" placeholder="0.00" style="width:100px;padding:6px 8px;border:1px solid #ccc;border-radius:5px;font-size:12px;">
+        <span id="mo-moneda" style="font-size:11px;"></span>
+        <button onclick="agregarManoObraDeReporte()" style="background:var(--blue,#0092A6);color:#fff;border:none;border-radius:5px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">+ Agregar mano de obra</button>
+      </div>
+      <div id="mo-sugerido" style="font-size:10.5px;color:#5B6B75;margin-top:4px;"></div>
+    </div>
   </div>
 
   <div class="moneda-bar">
@@ -752,7 +762,7 @@ function feedbackBtn(sel){
 
 function limpiarCot(){
   if(carrito.length&&!confirm('¿Nueva cotización? Se perderán los datos actuales.'))return;
-  carrito=[];reiniciarFolioPendiente();borradorActualId=null;
+  carrito=[];reiniciarFolioPendiente();borradorActualId=null;ocultarCajaManoObra();
   ['cli-nombre','cli-numcliente','cli-poblacion','cli-direccion','cli-contacto','cli-puesto','cli-correo','cli-telefono','cli-condpago','cli-equipo','cli-serie','cli-motivo','cli-observaciones'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.value='';
   });
@@ -1620,6 +1630,40 @@ async function cargarFoliosPendientes(){
 
 // ═══ CARGAR PIEZAS DESDE UN REPORTE DE TÉCNICO (Firebase) ═══
 
+// ── Caja "precio por hora" cuando el reporte trae horas y no hay tarifa fija ──
+// Las tarifas de mano de obra se deciden en cada reporte, así que se le pide el precio a quien cotiza.
+let moPendiente=null; // {horas, folio}
+function ultimoPrecioMO(){ try{ return parseFloat(localStorage.getItem('tnn_ultimo_precio_mo'))||0; }catch(e){ return 0; } }
+function guardarUltimoPrecioMO(v){ try{ localStorage.setItem('tnn_ultimo_precio_mo',String(v)); }catch(e){} }
+function ocultarCajaManoObra(){
+  moPendiente=null;
+  const caja=document.getElementById('folio-reporte-mo');
+  if(caja) caja.style.display='none';
+}
+function mostrarCajaManoObra(horas,folio){
+  moPendiente={horas,folio};
+  const caja=document.getElementById('folio-reporte-mo'); if(!caja) return;
+  document.getElementById('mo-info').textContent=`🛠 Mano de obra del reporte ${folio}: ${horas} hora(s)`;
+  document.getElementById('mo-moneda').textContent=moneda;
+  const ult=ultimoPrecioMO();
+  document.getElementById('mo-precio').value=ult>0?String(ult):'';
+  document.getElementById('mo-sugerido').textContent=ult>0?`Sugerido: el último precio por hora que usaste (${ult}). Cámbialo si este servicio es distinto.`:'';
+  caja.style.display='block';
+}
+function agregarManoObraDeReporte(){
+  if(!moPendiente) return;
+  const precio=parseFloat(String(document.getElementById('mo-precio').value).replace(',','.'))||0;
+  if(precio<=0){ toast('⚠ Escribe el precio por hora (no puede ser $0)'); return; }
+  const {horas,folio}=moPendiente;
+  carrito.push({tipo:'srv',id:'SRV'+Date.now(),ecc:'',desc:'Mano de obra de servicio técnico',codigo:'SERVIPRO',precio_lista:precio,qty:horas,disc:0,entrega:'',moneda:moneda});
+  guardarUltimoPrecioMO(precio);
+  ocultarCajaManoObra();
+  renderCart();
+  const st=document.getElementById('folio-reporte-status');
+  if(st){ st.textContent=`✓ Mano de obra agregada: ${horas} hora(s) × ${precio} (reporte ${folio}).`; st.style.color='#2E9E5B'; }
+  toast('✓ Mano de obra agregada a la cotización');
+}
+
 // ── Mano de obra que viene en el reporte del técnico ──
 // Convierte lo que regrese el reporte (2, "2.5", "2,5", vacío, texto raro) en un número.
 // Regresa null si el Apps Script todavía no manda este dato (versión vieja) para no
@@ -1639,7 +1683,7 @@ function mensajeHorasReporte(horas,tarifa){
   if(horas===null) return null;
   if(horas===0) return {tipo:'sin_horas',texto:'ℹ Este reporte no trae horas de mano de obra, así que no hay servicio que agregar. Todo está en orden.'};
   if(tarifa&&Number(tarifa.precio)>0) return {tipo:'agregada',texto:`✓ Se agregó la mano de obra: ${horas} hora(s) × la tarifa de "${tarifa.descripcion}". Puedes ajustar precio o descuento en la sección de Servicios.`};
-  return {tipo:'falta_tarifa',texto:`⚠ Este reporte trae ${horas} hora(s) de mano de obra, pero no encontré una tarifa por hora en "Tarifas Servicio". Ya dejé la descripción y la cantidad listas en "Agregar servicio": solo captura el precio y da clic en "+ Agregar servicio".`};
+  return {tipo:'falta_tarifa',texto:`⚠ Este reporte trae ${horas} hora(s) de mano de obra. Escribe abajo el precio por hora y da clic en "+ Agregar mano de obra".`};
 }
 
 async function cargarPorFolio(){
@@ -1651,6 +1695,7 @@ async function cargarPorFolio(){
 
   statusEl.textContent='Buscando…';
   statusEl.style.color='#5B6B75';
+  ocultarCajaManoObra();
   try{
     const r=await fetch(sheetsConf.url,{
       method:'POST',
@@ -1743,13 +1788,8 @@ async function cargarPorFolio(){
 
     renderCart();
 
-    // renderCart() reconstruye el formulario "Agregar servicio" (lo deja vacío), así que el
-    // prellenado se hace DESPUÉS de dibujar el carrito, no antes.
-    if(msgHoras&&msgHoras.tipo==='falta_tarifa'){
-      const d=document.getElementById('srv-desc'),q=document.getElementById('srv-qty');
-      if(d) d.value='Mano de obra (según reporte de servicio '+folio+')';
-      if(q) q.value=String(horasReporte);
-    }
+    // Mano de obra sin tarifa fija: se le pide el precio por hora a quien cotiza, ahí mismo.
+    if(msgHoras&&msgHoras.tipo==='falta_tarifa') mostrarCajaManoObra(horasReporte,folio);
 
     // Ya se cargó al menos una pieza de este folio: lo quitamos del menú para que
     // no se vuelva a cargar por accidente en esta sesión, pero NO se borra todavía
