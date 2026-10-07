@@ -1631,7 +1631,8 @@ function leerHorasReporte(info){
 }
 // Busca en "Tarifas Servicio" una tarifa de mano de obra por hora.
 function buscarTarifaManoObra(tarifas){
-  return (tarifas||[]).find(t=>/mano de obra|por hora|hora/i.test(t.descripcion||''))||null;
+  const lista=tarifas||[];
+  return lista.find(t=>/mano de obra/i.test(t.descripcion||''))||lista.find(t=>/\bhora/i.test(t.descripcion||''))||null;
 }
 // Mensaje que se le muestra a quien elabora la cotización según las horas del reporte.
 function mensajeHorasReporte(horas,tarifa){
@@ -1738,13 +1739,17 @@ async function cargarPorFolio(){
     if(msgHoras&&msgHoras.tipo==='agregada'){
       carrito.push({tipo:'srv',id:'SRV'+Date.now(),ecc:'',desc:tarifaMO.descripcion||'Mano de obra',codigo:tarifaMO.codigo||'SERVIPRO',precio_lista:Number(tarifaMO.precio)||0,qty:horasReporte,disc:0,entrega:'',moneda:moneda});
       horasAgregadas=true;
-    }else if(msgHoras&&msgHoras.tipo==='falta_tarifa'){
-      const d=document.getElementById('srv-desc'),q=document.getElementById('srv-qty');
-      if(d&&!d.value.trim()) d.value='Mano de obra (según reporte de servicio '+folio+')';
-      if(q) q.value=String(horasReporte);
     }
 
     renderCart();
+
+    // renderCart() reconstruye el formulario "Agregar servicio" (lo deja vacío), así que el
+    // prellenado se hace DESPUÉS de dibujar el carrito, no antes.
+    if(msgHoras&&msgHoras.tipo==='falta_tarifa'){
+      const d=document.getElementById('srv-desc'),q=document.getElementById('srv-qty');
+      if(d) d.value='Mano de obra (según reporte de servicio '+folio+')';
+      if(q) q.value=String(horasReporte);
+    }
 
     // Ya se cargó al menos una pieza de este folio: lo quitamos del menú para que
     // no se vuelva a cargar por accidente en esta sesión, pero NO se borra todavía
