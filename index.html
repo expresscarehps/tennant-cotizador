@@ -297,6 +297,16 @@ tr:hover td{background:#F8FAFF}
       <button onclick="cargarPorFolio()" style="background:var(--blue,#0092A6);color:#fff;border:none;border-radius:5px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">Cargar</button>
     </div>
     <div id="folio-reporte-status" style="font-size:11px;margin-top:6px;"></div>
+    <div id="folio-reporte-mo" style="display:none;margin-top:8px;padding:8px 10px;border:1px solid #E8A33D;border-radius:6px;background:#FFF8EC;font-size:12px;color:#1F2A44;">
+      <div id="mo-info" style="font-weight:600;margin-bottom:6px;"></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+        <label for="mo-precio" style="font-size:11px;">Precio por hora:</label>
+        <input type="number" id="mo-precio" min="0" step="0.01" placeholder="0.00" style="width:100px;padding:6px 8px;border:1px solid #ccc;border-radius:5px;font-size:12px;">
+        <span id="mo-moneda" style="font-size:11px;"></span>
+        <button onclick="agregarManoObraDeReporte()" style="background:var(--blue,#0092A6);color:#fff;border:none;border-radius:5px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">+ Agregar mano de obra</button>
+      </div>
+      <div id="mo-sugerido" style="font-size:10.5px;color:#5B6B75;margin-top:4px;"></div>
+    </div>
   </div>
 
   <div class="moneda-bar">
@@ -727,7 +737,7 @@ function agregarServicio(){
   const d=document.getElementById('srv-desc')?.value?.trim();
   const c=document.getElementById('srv-cod')?.value?.trim()||'SERVIPRO';
   const p=parseFloat(document.getElementById('srv-precio')?.value)||0;
-  const q=parseInt(document.getElementById('srv-qty')?.value)||1;
+  const q=parseFloat(String(document.getElementById('srv-qty')?.value).replace(',','.'))||1; // acepta decimales (ej. 2.5 horas)
   const entrega=document.getElementById('srv-entrega')?.value?.trim()||'';
   if(!d){toast('Escribe la descripción del servicio');return;}
   if(q>0&&p<=0){toast('⚠ Falta el precio del servicio — no puede ser $0');return;}
@@ -752,7 +762,7 @@ function feedbackBtn(sel){
 
 function limpiarCot(){
   if(carrito.length&&!confirm('¿Nueva cotización? Se perderán los datos actuales.'))return;
-  carrito=[];reiniciarFolioPendiente();borradorActualId=null;
+  carrito=[];reiniciarFolioPendiente();borradorActualId=null;ocultarCajaManoObra();
   ['cli-nombre','cli-numcliente','cli-poblacion','cli-direccion','cli-contacto','cli-puesto','cli-correo','cli-telefono','cli-condpago','cli-equipo','cli-serie','cli-motivo','cli-observaciones'].forEach(id=>{
     const el=document.getElementById(id);if(el)el.value='';
   });
@@ -841,7 +851,7 @@ function renderCart(){
     <div class="srv-grid">
       <input type="text" id="srv-cod" placeholder="Código">
       <input type="number" id="srv-precio" placeholder="Precio" step="0.01" min="0">
-      <input type="number" id="srv-qty" value="1" min="1">
+      <input type="number" id="srv-qty" value="1" min="0.1" step="any">
       <input type="text" id="srv-entrega" placeholder="Entrega">
     </div>
     <button class="btn-srv" onclick="agregarServicio()">+ Agregar servicio</button>
@@ -1619,6 +1629,63 @@ async function cargarFoliosPendientes(){
 }
 
 // ═══ CARGAR PIEZAS DESDE UN REPORTE DE TÉCNICO (Firebase) ═══
+
+// ── Caja "precio por hora" cuando el reporte trae horas y no hay tarifa fija ──
+// Las tarifas de mano de obra se deciden en cada reporte, así que se le pide el precio a quien cotiza.
+let moPendiente=null; // {horas, folio}
+function ultimoPrecioMO(){ try{ return parseFloat(localStorage.getItem('tnn_ultimo_precio_mo'))||0; }catch(e){ return 0; } }
+function guardarUltimoPrecioMO(v){ try{ localStorage.setItem('tnn_ultimo_precio_mo',String(v)); }catch(e){} }
+function ocultarCajaManoObra(){
+  moPendiente=null;
+  const caja=document.getElementById('folio-reporte-mo');
+  if(caja) caja.style.display='none';
+}
+function mostrarCajaManoObra(horas,folio){
+  moPendiente={horas,folio};
+  const caja=document.getElementById('folio-reporte-mo'); if(!caja) return;
+  document.getElementById('mo-info').textContent=`🛠 Mano de obra del reporte ${folio}: ${horas} hora(s)`;
+  document.getElementById('mo-moneda').textContent=moneda;
+  const ult=ultimoPrecioMO();
+  document.getElementById('mo-precio').value=ult>0?String(ult):'';
+  document.getElementById('mo-sugerido').textContent=ult>0?`Sugerido: el último precio por hora que usaste (${ult}). Cámbialo si este servicio es distinto.`:'';
+  caja.style.display='block';
+}
+function agregarManoObraDeReporte(){
+  if(!moPendiente) return;
+  const precio=parseFloat(String(document.getElementById('mo-precio').value).replace(',','.'))||0;
+  if(precio<=0){ toast('⚠ Escribe el precio por hora (no puede ser $0)'); return; }
+  const {horas,folio}=moPendiente;
+  carrito.push({tipo:'srv',id:'SRV'+Date.now(),ecc:'',desc:'Mano de obra de servicio técnico',codigo:'SERVIPRO',precio_lista:precio,qty:horas,disc:0,entrega:'',moneda:moneda});
+  guardarUltimoPrecioMO(precio);
+  ocultarCajaManoObra();
+  renderCart();
+  const st=document.getElementById('folio-reporte-status');
+  if(st){ st.textContent=`✓ Mano de obra agregada: ${horas} hora(s) × ${precio} (reporte ${folio}).`; st.style.color='#2E9E5B'; }
+  toast('✓ Mano de obra agregada a la cotización');
+}
+
+// ── Mano de obra que viene en el reporte del técnico ──
+// Convierte lo que regrese el reporte (2, "2.5", "2,5", vacío, texto raro) en un número.
+// Regresa null si el Apps Script todavía no manda este dato (versión vieja) para no
+// afirmar nada que no sabemos; regresa 0 si el reporte no trae horas.
+function leerHorasReporte(info){
+  if(!info||info.horasManoObra===undefined) return null;
+  const h=parseFloat(String(info.horasManoObra).replace(',','.'));
+  return (isFinite(h)&&h>0)?h:0;
+}
+// Busca en "Tarifas Servicio" una tarifa de mano de obra por hora.
+function buscarTarifaManoObra(tarifas){
+  const lista=tarifas||[];
+  return lista.find(t=>/mano de obra/i.test(t.descripcion||''))||lista.find(t=>/\bhora/i.test(t.descripcion||''))||null;
+}
+// Mensaje que se le muestra a quien elabora la cotización según las horas del reporte.
+function mensajeHorasReporte(horas,tarifa){
+  if(horas===null) return null;
+  if(horas===0) return {tipo:'sin_horas',texto:'ℹ Este reporte no trae horas de mano de obra, así que no hay servicio que agregar. Todo está en orden.'};
+  if(tarifa&&Number(tarifa.precio)>0) return {tipo:'agregada',texto:`✓ Se agregó la mano de obra: ${horas} hora(s) × la tarifa de "${tarifa.descripcion}". Puedes ajustar precio o descuento en la sección de Servicios.`};
+  return {tipo:'falta_tarifa',texto:`⚠ Este reporte trae ${horas} hora(s) de mano de obra. Escribe abajo el precio por hora y da clic en "+ Agregar mano de obra".`};
+}
+
 async function cargarPorFolio(){
   const sel=document.getElementById('folio-reporte-inp');
   const folio=sel.value.trim();
@@ -1628,6 +1695,7 @@ async function cargarPorFolio(){
 
   statusEl.textContent='Buscando…';
   statusEl.style.color='#5B6B75';
+  ocultarCajaManoObra();
   try{
     const r=await fetch(sheetsConf.url,{
       method:'POST',
@@ -1641,7 +1709,8 @@ async function cargarPorFolio(){
       statusEl.style.color='#D64545';
       return;
     }
-    if(data.resultado==='no_encontrado'||!data.piezas||!data.piezas.length){
+    const horasReporte=leerHorasReporte(data.infoReporte);
+    if(data.resultado==='no_encontrado'||((!data.piezas||!data.piezas.length)&&!(horasReporte>0))){
       statusEl.textContent=`No se encontró el folio "${folio}".`;
       statusEl.style.color='#D64545';
       return;
@@ -1675,11 +1744,13 @@ async function cargarPorFolio(){
 
     let agregadas=0;
     const noEncontradas=[];
+    const sinVerificar=[]; // piezas cuyo código el técnico no pudo confirmar contra el catálogo (ej. sin señal)
 
-    data.piezas.forEach(p=>{
+    (data.piezas||[]).forEach(p=>{
       const codigo=(p.codigoVenta||p.codigoEcc||'').trim();
       if(!codigo) return;
       const cantidad=parseInt(p.cantidad)||1;
+      if(p.codigoVerificado===false) sinVerificar.push(codigo);
 
       if(p.marca==='IPC'){
         const info=IPC_PARTS?IPC_PARTS[codigo]:null;
@@ -1706,26 +1777,53 @@ async function cargarPorFolio(){
       }
     });
 
+    // Mano de obra del reporte (si trae horas se agrega el servicio; si no, se avisa que no trae)
+    let horasAgregadas=false;
+    const tarifaMO=buscarTarifaManoObra(tarifasServicio);
+    const msgHoras=mensajeHorasReporte(horasReporte,tarifaMO);
+    if(msgHoras&&msgHoras.tipo==='agregada'){
+      carrito.push({tipo:'srv',id:'SRV'+Date.now(),ecc:'',desc:tarifaMO.descripcion||'Mano de obra',codigo:tarifaMO.codigo||'SERVIPRO',precio_lista:Number(tarifaMO.precio)||0,qty:horasReporte,disc:0,entrega:'',moneda:moneda});
+      horasAgregadas=true;
+    }
+
     renderCart();
+
+    // Mano de obra sin tarifa fija: se le pide el precio por hora a quien cotiza, ahí mismo.
+    if(msgHoras&&msgHoras.tipo==='falta_tarifa') mostrarCajaManoObra(horasReporte,folio);
 
     // Ya se cargó al menos una pieza de este folio: lo quitamos del menú para que
     // no se vuelva a cargar por accidente en esta sesión, pero NO se borra todavía
     // de "Reportes Pendientes" — eso pasa hasta que de verdad se genere el PDF final
     // (ver generarPDF), para no perder el folio si la cotización queda a medias.
-    if(agregadas>0){
+    if(agregadas>0||horasAgregadas||(horasReporte>0)){
       if(!foliosCargadosPendientesDeCotizar.includes(folio)) foliosCargadosPendientesDeCotizar.push(folio);
       const opcion=[...sel.options].find(o=>o.value===folio);
       if(opcion) opcion.remove();
       sel.value='';
     }
 
+    let textoFinal,colorFinal;
     if(noEncontradas.length){
-      statusEl.innerHTML=`✓ ${agregadas} pieza(s) agregada(s). ⚠ ${noEncontradas.length} no se encontraron en el catálogo: ${noEncontradas.join(', ')} — revísalas manualmente.`;
-      statusEl.style.color='#E8A33D';
+      textoFinal=`✓ ${agregadas} pieza(s) agregada(s). ⚠ ${noEncontradas.length} no se encontraron en el catálogo: ${noEncontradas.join(', ')} — revísalas manualmente.`;
+      colorFinal='#E8A33D';
+    }else if(agregadas>0){
+      textoFinal=`✓ ${agregadas} pieza(s) agregada(s) al carrito desde el folio ${folio}.`;
+      colorFinal='#2E9E5B';
     }else{
-      statusEl.textContent=`✓ ${agregadas} pieza(s) agregada(s) al carrito desde el folio ${folio}.`;
-      statusEl.style.color='#2E9E5B';
+      textoFinal=`Este reporte (folio ${folio}) no trae piezas para cotizar.`;
+      colorFinal='#5B6B75';
     }
+    if(sinVerificar.length){
+      textoFinal+=` ⚠ ${sinVerificar.length} pieza(s) con código SIN VERIFICAR por el técnico (${sinVerificar.join(', ')}): confirma que sean las correctas antes de enviar la cotización.`;
+      colorFinal='#E8A33D';
+    }
+    if(msgHoras){
+      textoFinal+=' '+msgHoras.texto;
+      if(msgHoras.tipo==='falta_tarifa') colorFinal='#E8A33D';
+    }
+    statusEl.textContent=textoFinal;
+    statusEl.style.color=colorFinal;
+    if(msgHoras) toast(msgHoras.tipo==='sin_horas'?'ℹ Este reporte no trae horas de mano de obra':msgHoras.tipo==='agregada'?'✓ Mano de obra agregada al carrito':'⚠ Falta el precio de la mano de obra');
   }catch(e){
     console.error(e);
     statusEl.textContent='No se pudo conectar. Intenta de nuevo.';
@@ -1761,7 +1859,7 @@ async function autocompletarDireccion(){
     const r=await fetch(sheetsConf.url,{
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body:JSON.stringify({accion:'detalleClienteBind',id:match.id})
+      body:JSON.stringify({accion:'detalleClienteBind',id:match.id,tipo:match.tipo})
     });
     const data=await r.json();
     if(data.resultado==='ok'){
@@ -1772,6 +1870,7 @@ async function autocompletarDireccion(){
       document.getElementById('cli-correo').value=data.correo||'';
       document.getElementById('cli-condpago').value=data.condicionesPago||'';
       document.getElementById('cli-numcliente').value=data.numCliente||'';
+      if(data.contacto) document.getElementById('cli-contacto').value=data.contacto;
     }
   }catch(e){console.warn('No se pudo traer los datos del cliente:',e);}
 }
@@ -1907,12 +2006,22 @@ async function registrarProspectoSiEsNuevo(nombre){
   const telefono=document.getElementById('cli-telefono')?.value||'';
   const correo=document.getElementById('cli-correo')?.value||'';
   try{
-    await fetch(sheetsConf.url,{method:'POST',mode:'no-cors',
-      headers:{'Content-Type':'application/json'},
+    const r=await fetch(sheetsConf.url,{
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
       body:JSON.stringify({accion:'agregarProspectoBind',nombre,contacto,telefono,correo})
     });
-    directorioClientes.push({nombre,tipo:'Prospecto'});
-  }catch(e){console.warn('No se pudo registrar el prospecto en Bind ERP:',e);}
+    const data=await r.json();
+    if(data.resultado==='ok'){
+      directorioClientes.push({nombre,tipo:'Prospecto'});
+    }else{
+      toast(`⚠ No se pudo registrar "${nombre}" como prospecto en Bind — la cotización sigue igual, pero avísale a Carlos`);
+      console.warn('Bind rechazó el registro del prospecto:',data.mensaje);
+    }
+  }catch(e){
+    toast(`⚠ No se pudo registrar "${nombre}" como prospecto en Bind — la cotización sigue igual, pero avísale a Carlos`);
+    console.warn('No se pudo registrar el prospecto en Bind ERP:',e);
+  }
 }
 
 // ═══ UTILS ═══
