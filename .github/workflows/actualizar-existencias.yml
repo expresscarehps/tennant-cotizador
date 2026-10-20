@@ -81,7 +81,8 @@ jobs:
           echo "rama=$RAMA" >> "$GITHUB_OUTPUT"
 
       - name: Avisar a n8n
-        if: always()
+        # Solo avisa si hubo un Excel nuevo (si se borra un archivo de incoming/ no manda nada)
+        if: always() && steps.excel.outputs.archivo != ''
         env:
           PRUEBAS: ${{ steps.pruebas.outcome }}
           PREPARAR: ${{ steps.preparar.outcome }}
