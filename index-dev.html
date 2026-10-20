@@ -483,9 +483,10 @@ tr:hover td{background:#F8FAFF}
 
 <script>
 // ═══ ESTADO ═══
-// Fecha del último inventario CEDIS aplicado a parts.json — se actualiza
-// manualmente cada vez que se entrega un parts.json nuevo (junto con el Excel de Tennant).
-const CEDIS_FECHA='5 de octubre de 2026';
+// Fecha del último inventario CEDIS aplicado a parts.json. Normalmente se lee sola de
+// data/cedis_meta.json (la escribe el proceso automático de existencias); este valor
+// solo se usa de respaldo si ese archivo no se puede leer.
+let CEDIS_FECHA='5 de octubre de 2026';
 
 let PARTS=null, ECC_MAP=null, SEARCH_IDX=null;
 let IPC_PARTS=null, IPC_IDX=null;
@@ -2079,6 +2080,19 @@ function toast(msg){
 
 // ═══ INIT ═══
 document.getElementById('cedis-fecha').textContent=`📅 Existencia CEDIS actualizada al ${CEDIS_FECHA}`;
+async function cargarFechaCedis(){
+  try{
+    const r=await fetch(`${DATA}/cedis_meta.json?v=${Date.now()}`);
+    if(!r.ok) return;
+    const meta=await r.json();
+    const texto=meta&&typeof meta.fecha_texto==='string'?meta.fecha_texto.trim():'';
+    if(!texto) return;
+    CEDIS_FECHA=texto;
+    const el=document.getElementById('cedis-fecha');
+    if(el&&el.textContent) el.textContent=`📅 Existencia CEDIS actualizada al ${CEDIS_FECHA}`;
+  }catch(e){ /* si falla, se queda la fecha de respaldo */ }
+}
+cargarFechaCedis();
 reiniciarFolioPendiente();
 let directorioClientesListo=cargarDirectorioClientes(); // se referencia en cargarPorFolio()
 let foliosCargadosPendientesDeCotizar=[]; // folios de técnico cargados a este carrito, aún no marcados como cotizados
