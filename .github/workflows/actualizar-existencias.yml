@@ -1,0 +1,91 @@
+name: Actualizar existencias CEDIS Tennant
+
+# Se dispara cuando n8n guarda un Excel nuevo de Tennant en la carpeta incoming/.
+# NO publica nada: deja el resultado en una rama (existencias/AAAA-MM-DD) y avisa a n8n,
+# que le pide la aprobación a Carlos antes de fusionar la rama con main.
+on:
+  push:
+    branches: [main]
+    paths: ['incoming/*.xlsx']
+  workflow_dispatch:
+    inputs:
+      archivo:
+        description: 'Ruta del Excel en incoming/ (si se deja vacío, se usa el que llegó en el último commit)'
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: existencias
+  cancel-in-progress: false
+
+jobs:
+  preparar:
+    runs-on: ubuntu-latest
+    env:
+      N8N_WEBHOOK_URL: https://hpsexpresscare.app.n8n.cloud/webhook/existencias-tennant-4f7c2a9e81
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        run: pip install pandas openpyxl xlrd
+
+      - name: Elegir el Excel
+        id: excel
+        env:
+          ARCHIVO_MANUAL: ${{ github.event.inputs.archivo }}
+        run: |
+          if [ -n "$ARCHIVO_MANUAL" ]; then
+            F="$ARCHIVO_MANUAL"
+          else
+            F="$(git diff-tree --no-commit-id --name-only --diff-filter=AM -r "$GITHUB_SHA" -- 'incoming/*.xlsx' | tail -1)"
+          fi
+          echo "Excel elegido: $F"
+          echo "archivo=$F" >> "$GITHUB_OUTPUT"
+
+      - name: Correr pruebas
+        id: pruebas
+        continue-on-error: true
+        working-directory: scripts
+        run: |
+          set -o pipefail
+          { python test_actualizar_existencias.py && python test_preparar_publicacion.py; } 2>&1 | tee ../pruebas.log
+
+      - name: Preparar parts.json y cedis_meta.json
+        id: preparar
+        if: steps.pruebas.outcome == 'success' && steps.excel.outputs.archivo != ''
+        continue-on-error: true
+        env:
+          ARCHIVO: ${{ steps.excel.outputs.archivo }}
+        run: python scripts/preparar_publicacion.py --excel "$ARCHIVO" --parts data/parts.json --meta data/cedis_meta.json --resumen resumen.json
+
+      - name: Guardar resultado en una rama
+        id: rama
+        if: steps.preparar.outcome == 'success'
+        run: |
+          FECHA="$(python -c "import json;print(json.load(open('resumen.json'))['fecha_iso'])")"
+          RAMA="existencias/$FECHA"
+          git config user.name "existencias-bot"
+          git config user.email "existencias-bot@users.noreply.github.com"
+          git checkout -b "$RAMA"
+          git add data/parts.json data/cedis_meta.json
+          git commit -m "Existencias CEDIS Tennant al $FECHA"
+          git push --force origin "$RAMA"
+          echo "rama=$RAMA" >> "$GITHUB_OUTPUT"
+
+      - name: Avisar a n8n
+        if: always()
+        env:
+          PRUEBAS: ${{ steps.pruebas.outcome }}
+          PREPARAR: ${{ steps.preparar.outcome }}
+          RAMA: ${{ steps.rama.outputs.rama }}
+          ARCHIVO: ${{ steps.excel.outputs.archivo }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/notificar.py
